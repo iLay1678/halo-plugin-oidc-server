@@ -28,6 +28,22 @@
 | 长期授权 | `offline_access`、刷新令牌轮换、重放检测与令牌族撤销 |
 | 令牌管理 | RFC 7009 撤销和 confidential 客户端 Introspection |
 
+## 界面预览
+
+以下截图展示管理员应用管理、应用创建配置和用户授权确认页面。截图中的应用名称、回调地址和账号均为本地演示数据，实际内容以你的 Halo 实例为准。
+
+### 应用管理
+
+![OIDC 应用列表与服务端点](docs/screenshots/console-apps.png)
+
+### 创建应用
+
+![创建 OIDC 应用](docs/screenshots/create-app.png)
+
+### 用户授权确认
+
+![OIDC 用户授权确认页面](docs/screenshots/consent-page.png)
+
 ## 安装与配置
 
 需要 Halo **2.26.0 或更高版本**，Halo 使用 Java 21。通过 Halo Console 的「插件」上传构建后的 JAR，启用后刷新 Console 和个人中心。
