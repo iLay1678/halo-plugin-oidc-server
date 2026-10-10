@@ -1,12 +1,17 @@
 package top.ilay.oidcserver;
 
+import java.time.Instant;
 import org.springframework.stereotype.Component;
-import run.halo.app.plugin.BasePlugin;
-import run.halo.app.plugin.PluginContext;
 import run.halo.app.extension.Scheme;
 import run.halo.app.extension.SchemeManager;
 import run.halo.app.extension.index.IndexSpecs;
-import java.time.Instant;
+import run.halo.app.plugin.BasePlugin;
+import run.halo.app.plugin.PluginContext;
+import top.ilay.oidcserver.extension.OidcAuthorizationCode;
+import top.ilay.oidcserver.extension.OidcClient;
+import top.ilay.oidcserver.extension.OidcConsent;
+import top.ilay.oidcserver.extension.OidcToken;
+import top.ilay.oidcserver.extension.OidcTokenFamily;
 
 /** 注册持久化状态与索引；密钥不会随停用删除。 */
 @Component

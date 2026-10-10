@@ -171,6 +171,34 @@ const identity = await response.json()
 
 ## 开发与构建
 
+### 目录结构
+
+后端按职责划分 Java 包，根包仅保留插件入口；测试按对应职责组织，共享测试数据和存储模拟放在 `support` 包。
+
+```text
+src/main/java/top/ilay/oidcserver/
+├── OidcServerPlugin.java  # 插件生命周期、扩展模型与索引注册
+├── config/               # Spring 配置与插件设置读取
+├── extension/            # Halo 持久化扩展模型与授权绑定
+├── dto/                  # 管理 API 请求、响应与分页模型
+├── service/              # 应用、授权、身份、签名与令牌服务
+├── web/                  # 管理和用户 API、授权控制器与页面
+├── protocol/             # OAuth/OIDC 参数校验、错误与协议过滤器
+├── reconciler/           # 过期授权码、令牌与令牌族清理
+└── util/                 # 加密与扩展资源状态工具
+
+src/test/java/top/ilay/oidcserver/
+├── OidcServerPluginTest.java
+├── service/              # 业务服务与安全回归测试
+├── web/                  # 授权页面、跳转与权限提示测试
+├── protocol/             # 协议过滤器测试
+└── support/              # 共享测试环境与存储模拟
+
+src/main/resources/       # 插件清单、设置、角色模板与 Logo
+ui/src/                   # Console 和个人中心界面
+docs/screenshots/         # README 界面截图
+```
+
 | 工具 | 要求 |
 | --- | --- |
 | Halo | ≥2.26.0 |
