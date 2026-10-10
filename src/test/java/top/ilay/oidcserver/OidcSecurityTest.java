@@ -301,6 +301,28 @@ class OidcSecurityTest {
             assertThat(replay.getStatusCode().value()).isEqualTo(400);
         }
     }
+    @Test void unauthorizedUserSeesConsentPageWithAccessWarningAndCannotAllow() {
+        roles.set(List.of("other-role"));
+        var auth = new TestingAuthenticationToken("alice", ""); auth.setAuthenticated(true);
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.method(HttpMethod.GET,
+            URI.create(authorizationPath("openid+profile") + "&prompt=consent")));
+        exchange.getAttributes().put(CsrfToken.class.getName(), Mono.just(new DefaultCsrfToken("X-CSRF-TOKEN", "_csrf", "csrf-value")));
+        var controller = authorization();
+        var page = controller.authorize(exchange).contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth)).block(WAIT);
+        assertThat(page.getStatusCode().value()).isEqualTo(200);
+        assertThat((String) page.getBody()).contains("当前用户没有访问该应用的权限", "返回应用")
+            .doesNotContain("同意并继续");
+        var matcher = java.util.regex.Pattern.compile("name=\"request_id\" value=\"([^\"]+)\"").matcher((String) page.getBody());
+        assertThat(matcher.find()).isTrue();
+        var session = exchange.getSession().block(WAIT);
+        var submission = MockServerWebExchange.builder(MockServerHttpRequest.post("/oidc/authorize")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body("request_id=" + matcher.group(1) + "&decision=allow"))
+            .sessionManager(ignored -> Mono.just(session)).build();
+        var result = controller.decide(submission).contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth)).block(WAIT);
+        assertThat(result.getStatusCode().value()).isEqualTo(302);
+        assertThat(result.getHeaders().getLocation().toString()).contains("error=access_denied");
+    }
     @Test void consentPageEscapesUntrustedTextWithoutReplacingTokenPlaceholders() {
         app.getSpec().setDisplayName("<script>__CSRF_TOKEN__ & %1$s</script>");
         app.getSpec().setDescription("\" onload=\"bad");

@@ -61,16 +61,20 @@ public class OidcAuthorizationController {
             var params = exchange.getRequest().getQueryParams();
             return clients.enabled(OidcValidation.required(params, "client_id")).flatMap(client -> {
                 var request = OidcValidation.authorization(params, client);
-                return identities.current().flatMap(user -> identities.allowed(client, user.getMetadata().getName()).thenReturn(user))
-                    .flatMap(user -> {
+                return identities.current().flatMap(user -> access(client, user.getMetadata().getName())
+                    .flatMap(access -> {
                         var username = user.getMetadata().getName();
+                        if (!access.allowed()) {
+                            if ("none".equals(request.prompt())) { return Mono.just(callback(request, "error", "access_denied")); }
+                            return consentPage(exchange, request, client, username, false);
+                        }
                         var reusable = "consent".equals(request.prompt()) ? Mono.<OidcConsent>empty() : consents.reusable(username, client, request.scopes());
                         return reusable.flatMap(consent -> redirectCode(request, client, consent))
                             .switchIfEmpty(Mono.defer(() -> {
                                 if ("none".equals(request.prompt())) { return Mono.just(callback(request, "error", "consent_required")); }
-                                return consentPage(exchange, request, client, username);
+                                return consentPage(exchange, request, client, username, true);
                             }));
-                    }).onErrorResume(OAuthError.class, error -> {
+                    })).onErrorResume(OAuthError.class, error -> {
                         if ("login_required".equals(error.code())) {
                             if ("none".equals(request.prompt())) { return Mono.just(callback(request, "error", "login_required")); }
                             var original = exchange.getRequest().getURI().getRawPath();
@@ -97,6 +101,10 @@ public class OidcAuthorizationController {
                     if (client.getSpec().getSecurityVersion() != pending.clientVersion()
                         || !client.getSpec().getRedirectUris().contains(pending.request().redirectUri())
                         || !client.getSpec().getScopes().containsAll(pending.request().scopes())) { return Mono.error(OAuthError.invalid("应用配置已变化，请重新开始授权")); }
+                    if (!pending.allowed()) {
+                        session.getAttributes().remove(PENDING);
+                        return Mono.just(callback(pending.request(), "error", "access_denied"));
+                    }
                     return identities.allowed(client, user.getMetadata().getName()).flatMap(allowed -> {
                         session.getAttributes().remove(PENDING);
                         if ("deny".equals(decision)) { return Mono.just(callback(pending.request(), "error", "access_denied")); }
@@ -109,13 +117,19 @@ public class OidcAuthorizationController {
     private Mono<ResponseEntity<?>> redirectCode(AuthorizationRequest request, OidcClient client, OidcConsent consent) {
         return tokens.authorize(request, client, consent).map(code -> callback(request, "code", code));
     }
-    private Mono<ResponseEntity<?>> consentPage(ServerWebExchange exchange, AuthorizationRequest request, OidcClient client, String username) {
+    private Mono<Access> access(OidcClient client, String username) {
+        return identities.allowed(client, username).thenReturn(new Access(true))
+            .onErrorResume(OAuthError.class, error -> "access_denied".equals(error.code())
+                ? Mono.just(new Access(false)) : Mono.error(error));
+    }
+    private Mono<ResponseEntity<?>> consentPage(ServerWebExchange exchange, AuthorizationRequest request, OidcClient client,
+                                                String username, boolean allowed) {
         Mono<CsrfToken> csrf = exchange.getAttribute(CsrfToken.class.getName());
         if (csrf == null) { return Mono.error(new IllegalStateException("Halo CSRF 防护未就绪")); }
         return csrf.flatMap(token -> exchange.getSession().map(session -> {
-            var pending = new Pending(OidcCrypto.random(), username, client.getSpec().getSecurityVersion(), request, clock.instant().plusSeconds(600));
+            var pending = new Pending(OidcCrypto.random(), username, client.getSpec().getSecurityVersion(), request, allowed, clock.instant().plusSeconds(600));
             session.getAttributes().put(PENDING, pending);
-            var html = OidcConsentPage.render(request, client, username, token, pending.id());
+            var html = OidcConsentPage.render(request, client, username, token, pending.id(), allowed);
             return (ResponseEntity<?>) ResponseEntity.ok().headers(consentHeaders(request)).contentType(MediaType.TEXT_HTML).body(html);
         }));
     }
@@ -147,5 +161,7 @@ public class OidcAuthorizationController {
         headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'");
         headers.set("Referrer-Policy", "no-referrer"); return headers;
     }
-    private record Pending(String id, String username, long clientVersion, AuthorizationRequest request, Instant expiresAt) implements java.io.Serializable { }
+    private record Access(boolean allowed) { }
+    private record Pending(String id, String username, long clientVersion, AuthorizationRequest request, boolean allowed,
+                           Instant expiresAt) implements java.io.Serializable { }
 }

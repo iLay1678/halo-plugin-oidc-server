@@ -19,6 +19,11 @@ final class OidcConsentPage {
 
     static String render(AuthorizationRequest request, OidcClient client, String username,
                          CsrfToken token, String requestId) {
+        return render(request, client, username, token, requestId, true);
+    }
+
+    static String render(AuthorizationRequest request, OidcClient client, String username,
+                         CsrfToken token, String requestId, boolean allowed) {
         var scopes = request.scopes().stream()
             .map(scope -> "<li><span class=\"scope-dot\" aria-hidden=\"true\"></span><span>"
                 + escape(SCOPE_LABELS.get(scope)) + "</span></li>")
@@ -27,9 +32,13 @@ final class OidcConsentPage {
         if (description == null || description.isBlank()) {
             description = "此应用请求访问你的账户信息。";
         }
+        var accessNotice = allowed ? "" : "<div class=\"access-denied\" role=\"alert\"><strong>当前用户没有访问该应用的权限</strong><span>请联系应用管理员申请相应角色后再试。</span></div>";
+        var actions = allowed
+            ? "<button type=\"submit\" name=\"decision\" value=\"deny\">拒绝</button><button type=\"submit\" name=\"decision\" value=\"allow\">同意并继续</button>"
+            : "<button type=\"submit\" name=\"decision\" value=\"deny\" class=\"single-action\">返回应用</button>";
         return TEMPLATE.formatted(escape(client.getSpec().getDisplayName()), escape(description),
             escape(username), escape(URI.create(request.redirectUri()).getAuthority()), scopes,
-            escape(token.getParameterName()), escape(token.getToken()), escape(requestId));
+            escape(token.getParameterName()), escape(token.getToken()), escape(requestId), accessNotice, actions);
     }
 
     private static String escape(String value) {
@@ -66,6 +75,8 @@ final class OidcConsentPage {
                     .scopes li { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 11px; color: #3d526d; border-radius: 10px; background: #f7faff; font-size: 14px; }
                     .scope-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%%; background: #0b73e0; box-shadow: 0 0 0 4px #dcebfb; }
                     .notice { margin: 20px 0 0; color: #71839a; font-size: 12px; line-height: 1.6; }
+                    .access-denied { display: grid; gap: 5px; margin: 20px 0 0; padding: 13px 14px; border: 1px solid #fecaca; border-radius: 11px; color: #991b1b; background: #fff5f5; font-size: 13px; line-height: 1.55; }
+                    .access-denied span { color: #b45353; font-size: 12px; }
                     form { display: flex; gap: 10px; margin-top: 25px; }
                     button { flex: 1; min-height: 44px; padding: 10px 18px; border: 1px solid #c8d7e8; border-radius: 11px; color: #34506f; background: #fff; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease; }
                     button:hover { border-color: #9ab8d8; background: #f5f9fe; }
@@ -73,6 +84,7 @@ final class OidcConsentPage {
                     button:focus-visible { outline: 3px solid rgb(11 115 224 / 30%%); outline-offset: 2px; }
                     button[value="allow"] { border-color: #0b73e0; color: #fff; background: linear-gradient(135deg, #0b87fd, #0756bc); box-shadow: 0 8px 16px rgb(11 115 224 / 22%%); }
                     button[value="allow"]:hover { border-color: #0756bc; background: linear-gradient(135deg, #0879e5, #064da8); }
+                    button.single-action { border-color: #9ab8d8; color: #315273; }
                     @media (max-width: 480px) { body { padding: 16px 12px; } .hero, .content { padding-left: 20px; padding-right: 20px; } .meta { align-items: flex-start; flex-direction: column; gap: 4px; } .meta-value { max-width: 100%%; } }
                     @media (prefers-reduced-motion: reduce) { button { transition: none; } }
                   </style>
@@ -91,12 +103,12 @@ final class OidcConsentPage {
                         <div class="meta" style="margin-top:8px"><span class="meta-label">回调地址</span><span class="meta-value" title="%4$s">%4$s</span></div>
                         <div class="section-title">此应用将获得以下权限</div>
                         <ul class="scopes">%5$s</ul>
-                        <p class="notice">授权后，你可以在个人中心的“应用授权”中随时撤销访问权限。</p>
+                        <p class="notice">你可以在个人中心的“应用授权”中随时查看或撤销授权。</p>
+                        %9$s
                         <form method="post" action="/oidc/authorize">
                           <input type="hidden" name="%6$s" value="%7$s">
                           <input type="hidden" name="request_id" value="%8$s">
-                          <button type="submit" name="decision" value="deny">拒绝</button>
-                          <button type="submit" name="decision" value="allow">同意并继续</button>
+                          %10$s
                         </form>
                       </div>
                     </main>
