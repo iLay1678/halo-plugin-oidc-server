@@ -1,0 +1,49 @@
+plugins {
+    id 'base'
+    id "com.github.node-gradle.node" version "7.1.0"
+}
+
+group 'top.ilay.oidcserver.ui'
+
+node {
+    pnpmVersion = '10.33.0'
+}
+
+// 使用工程内 pnpm，不要求全局安装，也不修改系统 PATH。
+tasks.withType(PnpmTask).configureEach {
+    if (System.getProperty('os.name').toLowerCase().contains('windows') && !node.download.get()) {
+        execOverrides { spec ->
+            def pnpmScript = file("${node.pnpmWorkDir.get()}/pnpm-v${node.pnpmVersion.get()}/node_modules/pnpm/bin/pnpm.cjs")
+            spec.executable = 'node'
+            spec.args = [pnpmScript.absolutePath] + spec.args
+        }
+    }
+}
+
+tasks.register('pnpmBuild', PnpmTask) {
+    group = 'build'
+    description = 'Build the UI project using pnpm'
+    args = ['build']
+    dependsOn tasks.named('pnpmInstall')
+    inputs.dir(layout.projectDirectory.dir('src'))
+    inputs.file(rootProject.layout.projectDirectory.file('src/main/resources/plugin.yaml'))
+    inputs.files(fileTree(
+        dir: layout.projectDirectory,
+        includes: ['*.cjs', '*.ts', '*.js', '*.json', '*.yaml']))
+    outputs.dir(layout.buildDirectory.dir('dist'))
+}
+
+tasks.register('pnpmCheck', PnpmTask) {
+    group = 'verification'
+    description = 'Run unit tests for the UI project using pnpm'
+    args = ['check']
+    dependsOn tasks.named('pnpmInstall')
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('pnpmCheck')
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('pnpmBuild')
+}

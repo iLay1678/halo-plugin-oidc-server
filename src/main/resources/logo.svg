@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title description">
+  <title id="title">OIDC 服务端</title>
+  <desc id="description">Halo 蓝色渐变圆角方形中，白色身份钥匙环连接浅青色应用节点，象征统一身份与应用授权。</desc>
+  <defs>
+    <linearGradient id="halo-blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B87FD"/>
+      <stop offset="1" stop-color="#0050B5"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#halo-blue)"/>
+  <g fill="none" stroke="#A6F3F0" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M120 92 148 64h30"/>
+    <path d="m120 164 28 28h30"/>
+  </g>
+  <g fill="#A6F3F0">
+    <circle cx="180" cy="64" r="13"/>
+    <circle cx="180" cy="192" r="13"/>
+  </g>
+  <g fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="92" cy="128" r="40"/>
+    <path d="M132 128h66m-30 0v24m30-24v14"/>
+  </g>
+</svg>

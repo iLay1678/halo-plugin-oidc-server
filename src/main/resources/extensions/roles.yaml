@@ -1,0 +1,36 @@
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: oidc-server-manage
+  labels:
+    halo.run/role-template: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "OIDC 服务端"
+    rbac.authorization.halo.run/display-name: "OIDC 应用管理"
+    rbac.authorization.halo.run/ui-permissions: '["plugin:oidc-server:manage"]'
+rules:
+  - apiGroups: ["console.api.oidc-server.halo.run"]
+    resources: ["clients"]
+    verbs: ["get", "list", "create", "update", "delete"]
+  - apiGroups: ["console.api.oidc-server.halo.run"]
+    resources: ["clients/enable", "clients/disable", "clients/reset-secret"]
+    verbs: ["create"]
+  - apiGroups: ["console.api.oidc-server.halo.run"]
+    resources: ["roles"]
+    verbs: ["list"]
+---
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: oidc-server-own-authorizations
+  labels:
+    halo.run/role-template: "true"
+    halo.run/hidden: "true"
+    rbac.authorization.halo.run/aggregate-to-authenticated: "true"
+rules:
+  - apiGroups: ["uc.api.oidc-server.halo.run"]
+    resources: ["authorizations"]
+    verbs: ["list"]
+  - apiGroups: ["uc.api.oidc-server.halo.run"]
+    resources: ["authorizations/revoke"]
+    verbs: ["create"]

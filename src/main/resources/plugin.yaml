@@ -1,0 +1,24 @@
+# Refer https://docs.halo.run/developer-guide/plugin/basics/manifest
+
+apiVersion: plugin.halo.run/v1alpha1
+kind: Plugin
+metadata:
+  # 插件唯一名称。
+  name: oidc-server
+spec:
+  enabled: true
+  requires: ">=2.26.0"
+  author:
+    name: ilay
+    website: https://github.com/ilay1678
+  logo: logo.svg
+  homepage: https://github.com/ilay1678/halo-plugin-oidc-server#readme
+  repo: https://github.com/ilay1678/halo-plugin-oidc-server
+  issues: https://github.com/ilay1678/halo-plugin-oidc-server/issues
+  displayName: "OIDC 服务端"
+  description: "为 Halo 提供 OpenID Connect 身份提供方能力，支持应用注册、基于角色的访问控制、授权码与 PKCE 登录及用户授权撤销。"
+  settingName: oidc-server-settings
+  configMapName: oidc-server-config
+  license:
+    - name: "GPL-3.0"
+      url: "https://github.com/ilay1678/halo-plugin-oidc-server/blob/main/LICENSE"
