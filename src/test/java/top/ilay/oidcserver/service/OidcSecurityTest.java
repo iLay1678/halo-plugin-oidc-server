@@ -101,7 +101,7 @@ class OidcSecurityTest extends OidcTestFixture {
         var other = clients.create(otherRequest).block(WAIT);
         var otherClient = clients.get(other.clientId()).block(WAIT);
         var verifier = OidcCrypto.random();
-        var otherConsent = consents.grant("alice", otherClient, List.of("openid")).block(WAIT);
+        var otherConsent = consents.grant(user, otherClient, List.of("openid")).block(WAIT);
         var otherAuth = new OidcValidation.AuthorizationRequest(otherClient.getMetadata().getName(),
             otherClient.getSpec().getRedirectUris().getFirst(), List.of("openid"), null, null, OidcCrypto.challenge(verifier), null);
         var token = tokens.authorize(otherAuth, otherClient, otherConsent)
@@ -123,10 +123,11 @@ class OidcSecurityTest extends OidcTestFixture {
 
     @Test void consentOwnershipAndNewEpochInvalidateHistoricalTokens() {
         var initial = issue().block(WAIT);
-        StepVerifier.create(consents.revoke(consent.getMetadata().getName(), "bob")).expectError(OAuthError.class).verify(WAIT);
+        var bob = OidcCrypto.named(new User(), "bob"); bob.setSpec(new User.UserSpec()); bob = store.add(bob);
+        StepVerifier.create(consents.revoke(consent.getMetadata().getName(), bob)).expectError(OAuthError.class).verify(WAIT);
         StepVerifier.create(tokens.userinfo((String) initial.get("access_token"))).assertNext(claims -> assertThat(claims).containsEntry("preferred_username", "alice")).verifyComplete();
-        consents.revoke(consent.getMetadata().getName(), "alice").block(WAIT);
-        var fresh = consents.grant("alice", app, consent.getSpec().getScopes()).block(WAIT);
+        consents.revoke(consent.getMetadata().getName(), user).block(WAIT);
+        var fresh = consents.grant(user, app, consent.getSpec().getScopes()).block(WAIT);
         assertThat(fresh.getSpec().getAuthorizationVersion()).isNotEqualTo(consent.getSpec().getAuthorizationVersion());
         StepVerifier.create(tokens.userinfo((String) initial.get("access_token"))).expectError(OAuthError.class).verify(WAIT);
         StepVerifier.create(tokens.refresh(app, (String) initial.get("refresh_token"), null)).expectError(OAuthError.class).verify(WAIT);
@@ -162,7 +163,7 @@ class OidcSecurityTest extends OidcTestFixture {
         var created = clients.create(new OidcClientRequest("无 PKCE 机密应用", "", OidcClient.ClientType.CONFIDENTIAL,
             List.of("https://app.example/cb"), List.of("openid"), OidcClient.AccessPolicy.ALL, List.of(), true)).block(WAIT);
         var confidential = clients.get(created.clientId()).block(WAIT);
-        var granted = consents.grant("alice", confidential, List.of("openid")).block(WAIT);
+        var granted = consents.grant(user, confidential, List.of("openid")).block(WAIT);
         var request = new OidcValidation.AuthorizationRequest(confidential.getMetadata().getName(), "https://app.example/cb",
             List.of("openid"), "state", null, null, null);
         var code = tokens.authorize(request, confidential, granted).block(WAIT);
@@ -199,11 +200,11 @@ class OidcSecurityTest extends OidcTestFixture {
     }
 
     @Test void scopeCannotExpandAndOfflineAccessRequiresConsent() {
-        var onlyOpenid = consents.grant("alice", app, List.of("openid")).block(WAIT); var verifier = OidcCrypto.random();
+        var onlyOpenid = consents.grant(user, app, List.of("openid")).block(WAIT); var verifier = OidcCrypto.random();
         var req = new OidcValidation.AuthorizationRequest(app.getMetadata().getName(), app.getSpec().getRedirectUris().getFirst(), List.of("openid"), null, null, OidcCrypto.challenge(verifier), null);
         var response = tokens.authorize(req, app, onlyOpenid).flatMap(code -> tokens.exchange(app, code, req.redirectUri(), verifier)).block(WAIT);
         assertThat(response).doesNotContainKey("refresh_token");
-        consent = consents.grant("alice", app, List.of("openid", "offline_access")).block(WAIT); var issued = issue().block(WAIT);
+        consent = consents.grant(user, app, List.of("openid", "offline_access")).block(WAIT); var issued = issue().block(WAIT);
         StepVerifier.create(tokens.refresh(app, (String) issued.get("refresh_token"), "openid offline_access email")).expectError(OAuthError.class).verify(WAIT);
     }
 

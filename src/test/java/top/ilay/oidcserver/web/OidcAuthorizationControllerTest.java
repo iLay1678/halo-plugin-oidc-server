@@ -14,6 +14,8 @@ import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.web.server.csrf.CsrfToken;
 import org.springframework.security.web.server.csrf.DefaultCsrfToken;
 import reactor.core.publisher.Mono;
+import run.halo.app.core.extension.User;
+import top.ilay.oidcserver.reconciler.UserAuthorizationCleanup;
 import top.ilay.oidcserver.support.OidcTestFixture;
 import top.ilay.oidcserver.util.OidcCrypto;
 
@@ -106,6 +108,31 @@ class OidcAuthorizationControllerTest extends OidcTestFixture {
         assertThat(html).contains("&lt;script&gt;__CSRF_TOKEN__ &amp; %1$s&lt;/script&gt;")
             .contains("name=\"_csrf\" value=\"csrf-secret\"")
             .doesNotContain("<script>");
+    }
+
+    @Test void sameNameReplacementCannotSubmitPreviousAccountsConsentPage() {
+        var auth = new TestingAuthenticationToken("alice", ""); auth.setAuthenticated(true);
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.method(HttpMethod.GET,
+            URI.create(authorizationPath("openid+profile") + "&prompt=consent")));
+        exchange.getAttributes().put(CsrfToken.class.getName(), Mono.just(new DefaultCsrfToken("X-CSRF-TOKEN", "_csrf", "csrf-value")));
+        var controller = authorization();
+        var page = controller.authorize(exchange).contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth)).block(WAIT);
+        var matcher = java.util.regex.Pattern.compile("name=\"request_id\" value=\"([^\"]+)\"").matcher((String) page.getBody());
+        assertThat(matcher.find()).isTrue();
+        var session = exchange.getSession().block(WAIT);
+        new UserAuthorizationCleanup(store.synchronous).releaseFinalizers();
+        store.delete(store.snapshot(User.class, "alice")); store.collectGarbage();
+        var replacement = OidcCrypto.named(new User(), "alice"); replacement.setSpec(new User.UserSpec());
+        replacement.getMetadata().setCreationTimestamp(java.time.Instant.parse("2026-10-12T01:00:00Z"));
+        store.add(replacement);
+        var submission = MockServerWebExchange.builder(MockServerHttpRequest.post("/oidc/authorize")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body("request_id=" + matcher.group(1) + "&decision=allow"))
+            .sessionManager(ignored -> Mono.just(session)).build();
+        var result = controller.decide(submission).contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth)).block(WAIT);
+        assertThat(result.getStatusCode().value()).isEqualTo(400);
+        assertThat(((java.util.Map<?, ?>) result.getBody()).get("error")).isEqualTo("access_denied");
+        assertThat(result.getHeaders().getLocation()).isNull();
     }
     private OidcAuthorizationController authorization() {
         return new OidcAuthorizationController(settings, clients, consents, identity, tokens, signing, clock);

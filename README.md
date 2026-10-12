@@ -14,6 +14,19 @@
 - 项目/仓库：[`halo-plugin-oidc-server`](https://github.com/ilay1678/halo-plugin-oidc-server)
 - 作者：[`ilay`](https://github.com/ilay1678)
 
+## 适用场景与插件选择
+
+本插件适合让独立 Web 服务、自建工具或支持标准 OIDC 的第三方应用使用 Halo 账户登录。Halo 作为 OIDC 身份提供方，应用通过 Discovery、授权码、ID Token 和 UserInfo 完成接入。
+
+| 场景 | OIDC 服务端（本插件） | [统一身份认证](https://github.com/liuyiwuqing/halo-plugin-sso) |
+| --- | --- | --- |
+| 主要用途 | 为标准 OIDC 客户端提供身份服务，接入方可以不是 Halo | 多个 Halo 站点组成身份中心和接入站 |
+| 接入方工作 | 使用应用自身的 OIDC 配置或客户端库，维护应用会话 | 在接入站安装插件，绑定或创建本地 Halo 用户并建立登录态 |
+| 角色处理 | Halo 角色决定能否访问某个应用；不下发角色映射 | 支持中心角色到接入站本地角色的映射 |
+| 典型选择 | 外部业务应用需要“使用 Halo 账户登录” | 多个 Halo 站点需要账号绑定、资料同步和角色映射 |
+
+对照依据为「统一身份认证」项目当前 README，具体能力以对应版本文档为准。本插件不为第三方应用创建本地用户、映射本地角色或维护其登录会话。
+
 ## 功能
 
 | 功能 | 说明 |
@@ -77,6 +90,14 @@
 用户进入个人中心的「个人资料 → 应用授权」，可以撤销任意应用授权。撤销后相关授权码、访问令牌和刷新令牌无法继续在插件中使用。应用访问和令牌刷新会重新检查账户状态、应用策略与当前角色，移除角色后不能继续获取身份或刷新令牌。
 
 **撤销范围：**第三方已经保存的 ID Token 可在到期前离线验证，第三方已有会话由该应用管理。撤销授权不会自动退出第三方应用，首版不提供 back-channel logout 或 RP-Initiated Logout。
+
+### 用户删除与同名账户
+
+授权记录按用户名及绑定账户创建时间的 `subject` 校验归属。删除后重新创建的同名用户拥有新的身份，不能查看、撤销或复用旧账户的授权，旧的授权确认页面也不能继续提交。
+
+插件运行时，用户删除流程通过 Finalizer 清理其授权记录（包括已撤销记录）、授权码、访问令牌、刷新令牌与令牌族。确认这些记录已被 Halo 实际回收后才解除删除保护，随后用户名才能重新用于创建账户。清理失败会重试，期间旧账户已不能继续访问 OIDC。
+
+停用或卸载插件时释放本插件的用户 Finalizer，避免停止的控制器阻塞 Halo 用户删除；应用配置和授权数据按 Halo 插件数据机制保留。再次启用时会清理无主、已删除账户及身份不匹配的历史授权。即使后台清理尚未完成，新账户也无法读取或修改旧授权；既有账户的合法授权可继续使用。
 
 ## OIDC 接入
 
@@ -169,6 +190,33 @@ const identity = await response.json()
 
 应用仅使用 opaque 访问令牌调用插件 UserInfo / Introspection；它不能用于认证 Halo API。协议声明以 Discovery 为准，不声明未实现的认证能力。
 
+### 完整示例：独立 Node.js 应用
+
+仓库提供可运行的 [OIDC 联调应用](scripts/oidc-demo.mjs)，它是独立 HTTP 服务，通过标准 OIDC 端点与 Halo 交互，不依赖 Halo 插件 API 或前端组件。需要 Node.js 22.12+，无需安装 npm 依赖。
+
+1. 在本机 Halo 中启用插件和「启用 OIDC 服务」，外部访问地址设为 `http://127.0.0.1:8092`。
+2. 创建一个机密客户端，回调地址填写 **`http://127.0.0.1:8765/callback`**，允许 `openid`、`profile`、`email`、`offline_access`，选择测试账户可访问的角色策略。保存创建后显示的 Client ID 和 Client Secret。
+3. 在插件仓库根目录执行以下命令，将配置放到已被 Git 忽略的 `workplace` 目录：
+
+```powershell
+New-Item -ItemType Directory -Force "workplace" | Out-Null
+Copy-Item "scripts/oidc-demo.example.json" "workplace/oidc-demo.json"
+```
+
+macOS / Linux 可使用 `mkdir -p workplace` 和 `cp scripts/oidc-demo.example.json workplace/oidc-demo.json`。编辑 `workplace/oidc-demo.json`，把 `clientId`、`clientSecret` 替换为刚创建的凭据，`issuer` 使用应用列表端点说明中的完整 Issuer URL（此例为 `http://127.0.0.1:8092/oidc`）。不要提交这个含密钥的本地文件。
+
+```powershell
+node "scripts/oidc-demo.mjs" "workplace/oidc-demo.json"
+```
+
+4. 打开 `http://127.0.0.1:8765`，点击「通过 Halo 登录」，登录并同意授权。浏览器回到示例应用后，应显示身份信息和校验成功提示。
+5. 点击「查询用户身份」验证 UserInfo；点击「刷新令牌」验证轮换。然后在 Halo 个人中心撤销该应用授权，再次查询身份或刷新都应被拒绝。
+6. 重新授权后，先刷新一次，再点击「重放旧刷新令牌」，应收到拒绝响应，随后该令牌族的 UserInfo 和刷新请求也应失败。
+
+示例依次完成 Discovery 校验、`state` / `nonce` / PKCE 生成、授权跳转、回调和令牌交换、JWKS / RS256 签名验证、`iss` / `aud` / 时效 / `nonce` / `at_hash` 校验，以及 UserInfo 的 `sub` 一致性验证。机密凭据和令牌保存在服务端，不展示在页面中。公开客户端可省略 `clientSecret`，仍使用 PKCE。
+
+该脚本仅用于本机演示和回归，内存会话在进程退出时丢失，只允许环回地址的 Halo。生产接入应使用成熟 OIDC 客户端库、HTTPS 和持久化会话管理；第三方本地账号关联请使用 `issuer + sub`，不要使用用户名或邮箱作为唯一身份。
+
 ## 开发与构建
 
 ### 目录结构
@@ -184,7 +232,7 @@ src/main/java/top/ilay/oidcserver/
 ├── service/              # 应用、授权、身份、签名与令牌服务
 ├── web/                  # 管理和用户 API、授权控制器与页面
 ├── protocol/             # OAuth/OIDC 参数校验、错误与协议过滤器
-├── reconciler/           # 过期授权码、令牌与令牌族清理
+├── reconciler/           # 用户删除、无主授权和过期令牌状态清理
 └── util/                 # 加密与扩展资源状态工具
 
 src/test/java/top/ilay/oidcserver/
@@ -192,6 +240,7 @@ src/test/java/top/ilay/oidcserver/
 ├── service/              # 业务服务与安全回归测试
 ├── web/                  # 授权页面、跳转与权限提示测试
 ├── protocol/             # 协议过滤器测试
+├── reconciler/           # 用户删除、同名重建和清理生命周期回归
 └── support/              # 共享测试环境与存储模拟
 
 src/main/resources/       # 插件清单、设置、角色模板与 Logo
@@ -229,6 +278,8 @@ macOS / Linux：
 ```
 
 生成目录 `ui/src/api/generated` 为构建产物，不手工修改。普通配置使用 Halo Setting，私钥与客户端秘密验证值使用 Halo Secret，访问/刷新令牌只保存摘要。
+
+重新提交应用市场前，请按 [审核修复与人工复核步骤](docs/review-verification.md) 核对账户删除和主要授权流程，并记录实际人工复核结果。
 
 ## 反馈与许可证
 

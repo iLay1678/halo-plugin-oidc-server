@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -16,6 +17,7 @@ import run.halo.app.core.extension.Role;
 import run.halo.app.core.extension.User;
 import run.halo.app.core.user.service.RoleService;
 import run.halo.app.extension.Extension;
+import run.halo.app.extension.ExtensionUtil;
 import run.halo.app.extension.ReactiveExtensionClient;
 import top.ilay.oidcserver.extension.OidcClient;
 import top.ilay.oidcserver.protocol.OAuthError;
@@ -25,6 +27,7 @@ import top.ilay.oidcserver.util.OidcCrypto;
 @Service
 @RequiredArgsConstructor
 public class OidcIdentityService {
+    public static final String USER_FINALIZER = "oidc-server.halo.run/authorizations";
     private final ReactiveExtensionClient client;
     private final RoleService roles;
 
@@ -71,6 +74,25 @@ public class OidcIdentityService {
         return client.fetch(User.class, username).filter(OidcIdentityService::eligible)
             .switchIfEmpty(Mono.error(OAuthError.grant()));
     }
+    /** 保留请求开始时的账户身份，重试时不能切换到同名新账户。 */
+    public Mono<User> user(User expected) {
+        var subject = subject(expected);
+        return user(expected.getMetadata().getName()).filter(current -> subject.equals(subject(current)))
+            .switchIfEmpty(Mono.error(OAuthError.grant()));
+    }
+    /** 写入授权前先持久化删除保护；版本冲突时重新核对账户。 */
+    public Mono<User> protect(User expected) {
+        return protect(expected, 4);
+    }
+    private Mono<User> protect(User expected, int attempts) {
+        return Mono.defer(() -> user(expected).flatMap(current -> {
+            if (!ExtensionUtil.addFinalizers(current.getMetadata(), Set.of(USER_FINALIZER))) {
+                return Mono.just(current);
+            }
+            return client.update(current);
+        })).onErrorResume(OptimisticLockingFailureException.class,
+            error -> attempts > 1 ? protect(expected, attempts - 1) : Mono.error(error));
+    }
     public Mono<User> allowed(OidcClient application, String username) {
         return user(username).flatMap(user -> {
             if (application.getSpec().getAccessPolicy() == OidcClient.AccessPolicy.ALL) { return Mono.just(user); }
@@ -92,7 +114,8 @@ public class OidcIdentityService {
             && !"true".equals(labels(role).get(Role.TEMPLATE_LABEL_NAME)) && !"true".equals(labels(role).get(Role.HIDDEN_LABEL_NAME));
     }
     private static Map<String, String> labels(Extension value) { return value.getMetadata().getLabels() == null ? Map.of() : value.getMetadata().getLabels(); }
-    static String subject(User user) {
+    public static String subject(User user) {
+        if (user.getMetadata().getCreationTimestamp() == null) { throw OAuthError.grant(); }
         // 绑定账户创建时刻，用户名删除后重建不会继承旧主体标识。
         return OidcCrypto.digest("oidc-sub\0" + user.getMetadata().getName() + "\0" + user.getMetadata().getCreationTimestamp());
     }

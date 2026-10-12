@@ -24,13 +24,13 @@ public class OidcUserEndpoint implements CustomEndpoint {
     @Override public RouterFunction<ServerResponse> endpoint() {
         return SpringdocRouteBuilder.route()
             .GET("/authorizations", request -> OidcConsoleEndpoint.respond(identity.current().flatMap(user ->
-                consents.list(user.getMetadata().getName(), OidcConsoleEndpoint.number(request, "page", 1), OidcConsoleEndpoint.number(request, "size", 20)))),
+                consents.list(user, OidcConsoleEndpoint.number(request, "page", 1), OidcConsoleEndpoint.number(request, "size", 20)))),
                 builder -> {
                     OidcConsoleEndpoint.page(builder.operationId("listMyOidcAuthorizations").tag("OidcV1alpha1Uc").description("分页查询当前用户的应用授权"));
                     builder.response(responseBuilder().implementation(OidcConsentPage.class));
                 })
             .POST("/authorizations/{name}/revoke", request -> OidcConsoleEndpoint.respond(identity.current().flatMap(user ->
-                consents.revoke(request.pathVariable("name"), user.getMetadata().getName()))),
+                consents.revoke(request.pathVariable("name"), user))),
                 builder -> builder.operationId("revokeMyOidcAuthorization").tag("OidcV1alpha1Uc").description("撤销当前用户的授权；所有历史授权码与令牌立即失效")
                     .parameter(parameterBuilder().name("name").in(ParameterIn.PATH).required(true).implementation(String.class).description("授权记录名称"))
                     .response(responseBuilder().implementation(OidcConsentResponse.class)))

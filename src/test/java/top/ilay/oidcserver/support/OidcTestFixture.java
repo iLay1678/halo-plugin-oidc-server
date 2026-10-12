@@ -71,7 +71,7 @@ public abstract class OidcTestFixture {
         var request = new OidcClientRequest("测试应用", "说明", OidcClient.ClientType.PUBLIC, List.of("https://app.example/callback?existing=%2F"),
             List.of("openid", "profile", "email", "offline_access"), OidcClient.AccessPolicy.ROLES, List.of("member"), true);
         var response = clients.create(request).block(WAIT); app = clients.get(response.clientId()).block(WAIT);
-        consent = consents.grant("alice", app, request.scopes()).block(WAIT);
+        consent = consents.grant(user, app, request.scopes()).block(WAIT);
     }
 
     protected OidcValidation.AuthorizationRequest request(String verifier) {

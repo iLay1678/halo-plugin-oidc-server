@@ -12,15 +12,18 @@ import top.ilay.oidcserver.extension.OidcClient;
 import top.ilay.oidcserver.extension.OidcConsent;
 import top.ilay.oidcserver.extension.OidcToken;
 import top.ilay.oidcserver.extension.OidcTokenFamily;
+import top.ilay.oidcserver.reconciler.UserAuthorizationCleanup;
 
 /** 注册持久化状态与索引；密钥不会随停用删除。 */
 @Component
 public class OidcServerPlugin extends BasePlugin {
 
     private final SchemeManager schemes;
-    public OidcServerPlugin(PluginContext pluginContext, SchemeManager schemes) {
+    private final UserAuthorizationCleanup userCleanup;
+    public OidcServerPlugin(PluginContext pluginContext, SchemeManager schemes, UserAuthorizationCleanup userCleanup) {
         super(pluginContext);
         this.schemes = schemes;
+        this.userCleanup = userCleanup;
     }
 
     @Override
@@ -30,6 +33,7 @@ public class OidcServerPlugin extends BasePlugin {
             indexes.add(IndexSpecs.<OidcClient, Boolean>single("spec.deleted", Boolean.class).indexFunc(value -> value.getSpec().isDeleted()));
         });
         schemes.register(OidcConsent.class, indexes -> {
+            indexes.add(IndexSpecs.<OidcConsent, String>single("spec.subject", String.class).indexFunc(value -> value.getSpec().getSubject()));
             indexes.add(IndexSpecs.<OidcConsent, String>single("spec.username", String.class).indexFunc(value -> value.getSpec().getUsername()));
             indexes.add(IndexSpecs.<OidcConsent, String>single("spec.clientId", String.class).indexFunc(value -> value.getSpec().getClientId()));
             indexes.add(IndexSpecs.<OidcConsent, Boolean>single("spec.revoked", Boolean.class).indexFunc(value -> value.getSpec().isRevoked()));
@@ -54,6 +58,7 @@ public class OidcServerPlugin extends BasePlugin {
 
     @Override
     public void stop() {
+        userCleanup.releaseFinalizers();
         for (var type : java.util.List.of(OidcTokenFamily.class, OidcToken.class, OidcAuthorizationCode.class, OidcConsent.class, OidcClient.class)) {
             schemes.unregister(Scheme.buildFromType(type));
         }

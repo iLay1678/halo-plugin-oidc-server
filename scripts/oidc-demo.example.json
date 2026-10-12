@@ -1,0 +1,6 @@
+{
+  "issuer": "http://127.0.0.1:8092/oidc",
+  "clientId": "填写创建应用后显示的 Client ID",
+  "clientSecret": "填写仅显示一次的 Client Secret",
+  "port": 8765
+}

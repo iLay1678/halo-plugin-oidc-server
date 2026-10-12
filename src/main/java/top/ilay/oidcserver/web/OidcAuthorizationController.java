@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+import run.halo.app.core.extension.User;
 import top.ilay.oidcserver.config.OidcSettings;
 import top.ilay.oidcserver.extension.OidcClient;
 import top.ilay.oidcserver.extension.OidcConsent;
@@ -74,16 +75,15 @@ public class OidcAuthorizationController {
                 var request = OidcValidation.authorization(params, client);
                 return identities.current().flatMap(user -> access(client, user.getMetadata().getName())
                     .flatMap(access -> {
-                        var username = user.getMetadata().getName();
                         if (!access.allowed()) {
                             if ("none".equals(request.prompt())) { return Mono.just(callback(request, "error", "access_denied")); }
-                            return consentPage(exchange, request, client, username, false);
+                            return consentPage(exchange, request, client, user, false);
                         }
-                        var reusable = "consent".equals(request.prompt()) ? Mono.<OidcConsent>empty() : consents.reusable(username, client, request.scopes());
+                        var reusable = "consent".equals(request.prompt()) ? Mono.<OidcConsent>empty() : consents.reusable(user, client, request.scopes());
                         return reusable.flatMap(consent -> redirectCode(request, client, consent))
                             .switchIfEmpty(Mono.defer(() -> {
                                 if ("none".equals(request.prompt())) { return Mono.just(callback(request, "error", "consent_required")); }
-                                return consentPage(exchange, request, client, username, true);
+                                return consentPage(exchange, request, client, user, true);
                             }));
                     })).onErrorResume(OAuthError.class, error -> {
                         if ("login_required".equals(error.code())) {
@@ -106,7 +106,8 @@ public class OidcAuthorizationController {
                 || !OidcCrypto.equal(pending.id(), OidcValidation.required(form, "request_id"))) { return Mono.error(OAuthError.invalid("授权确认已过期，请重新开始登录")); }
             var decision = OidcValidation.required(form, "decision");
             if (!List.of("allow", "deny").contains(decision)) { return Mono.error(OAuthError.invalid("授权决定无效")); }
-            return identities.current().filter(user -> user.getMetadata().getName().equals(pending.username()))
+            return identities.current().filter(user -> user.getMetadata().getName().equals(pending.username())
+                    && OidcIdentityService.subject(user).equals(pending.subject()))
                 .switchIfEmpty(Mono.error(new OAuthError("access_denied", "授权用户已发生变化")))
                 .flatMap(user -> clients.enabled(pending.request().clientId()).flatMap(client -> {
                     if (client.getSpec().getSecurityVersion() != pending.clientVersion()
@@ -120,7 +121,7 @@ public class OidcAuthorizationController {
                         session.getAttributes().remove(PENDING);
                         if ("deny".equals(decision)) { return Mono.just(callback(pending.request(), "error", "access_denied")); }
                         // 包含 offline_access 的确认页明确显示保持授权，只有显式同意才签发刷新令牌。
-                        return consents.grant(user.getMetadata().getName(), client, pending.request().scopes()).flatMap(consent -> redirectCode(pending.request(), client, consent));
+                        return consents.grant(user, client, pending.request().scopes()).flatMap(consent -> redirectCode(pending.request(), client, consent));
                     });
                 }));
         })).onErrorResume(error -> Mono.just(localError(error)));
@@ -134,11 +135,12 @@ public class OidcAuthorizationController {
                 ? Mono.just(new Access(false)) : Mono.error(error));
     }
     private Mono<ResponseEntity<?>> consentPage(ServerWebExchange exchange, AuthorizationRequest request, OidcClient client,
-                                                String username, boolean allowed) {
+                                                User user, boolean allowed) {
+        var username = user.getMetadata().getName();
         Mono<CsrfToken> csrf = exchange.getAttribute(CsrfToken.class.getName());
         if (csrf == null) { return Mono.error(new IllegalStateException("Halo CSRF 防护未就绪")); }
         return csrf.flatMap(token -> exchange.getSession().map(session -> {
-            var pending = new Pending(OidcCrypto.random(), username, client.getSpec().getSecurityVersion(), request, allowed, clock.instant().plusSeconds(600));
+            var pending = new Pending(OidcCrypto.random(), username, OidcIdentityService.subject(user), client.getSpec().getSecurityVersion(), request, allowed, clock.instant().plusSeconds(600));
             session.getAttributes().put(PENDING, pending);
             var html = OidcConsentPage.render(request, client, username, token, pending.id(), allowed);
             return (ResponseEntity<?>) ResponseEntity.ok().headers(consentHeaders(request)).contentType(MediaType.TEXT_HTML).body(html);
@@ -173,6 +175,6 @@ public class OidcAuthorizationController {
         headers.set("Referrer-Policy", "no-referrer"); return headers;
     }
     private record Access(boolean allowed) { }
-    private record Pending(String id, String username, long clientVersion, AuthorizationRequest request, boolean allowed,
+    private record Pending(String id, String username, String subject, long clientVersion, AuthorizationRequest request, boolean allowed,
                            Instant expiresAt) implements java.io.Serializable { }
 }
