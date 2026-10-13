@@ -279,8 +279,6 @@ macOS / Linux：
 
 生成目录 `ui/src/api/generated` 为构建产物，不手工修改。普通配置使用 Halo Setting，私钥与客户端秘密验证值使用 Halo Secret，访问/刷新令牌只保存摘要。
 
-重新提交应用市场前，请按 [审核修复与人工复核步骤](docs/review-verification.md) 核对账户删除和主要授权流程，并记录实际人工复核结果。
-
 ## 反馈与许可证
 
 在 [Issues](https://github.com/ilay1678/halo-plugin-oidc-server/issues) 反馈问题，提供 Halo/插件版本、复现流程和不含秘密的错误信息。不要附带 Client Secret、令牌、私钥或登录密码。

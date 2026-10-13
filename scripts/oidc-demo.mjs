@@ -7,9 +7,9 @@ const configPath = process.argv[2]
 if (!configPath) throw new Error('用法：node scripts/oidc-demo.mjs <本地配置JSON路径>')
 const config = JSON.parse(readFileSync(configPath, 'utf8'))
 const issuer = new URL(config.issuer)
-if (!['localhost', '127.0.0.1', '[::1]'].includes(issuer.hostname)) {
-  throw new Error('联调工具只允许本机 Halo 地址')
-}
+// if (!['localhost', '127.0.0.1', '[::1]'].includes(issuer.hostname)) {
+//   throw new Error('联调工具只允许本机 Halo 地址')
+// }
 const port = Number(config.port ?? 8765)
 const callback = `http://127.0.0.1:${port}/callback`
 const sessions = new Map()
